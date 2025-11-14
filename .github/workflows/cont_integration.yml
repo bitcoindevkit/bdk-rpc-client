@@ -1,0 +1,187 @@
+on: [push, pull_request]
+
+name: CI
+
+jobs:
+  # formatting
+  fmt:
+    name: Rust fmt
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt
+      
+      - name: Check fmt
+        run: cargo fmt --all -- --check
+
+  # Clippy lints
+  clippy:
+    name: Clippy (${{ matrix.rust }}, ${{ matrix.features }})
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        rust: [stable, beta]
+        features:
+          - --features default
+          - --no-default-features
+          - --all-features
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Install Rust ${{ matrix.rust }}
+        uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: ${{ matrix.rust }}
+          components: clippy
+           
+      - name: Generate cache key
+        run: echo "${{ matrix.rust }} ${{ matrix.features }}" | tee .cache_key
+      
+      - name: Cache cargo registry
+        uses: actions/cache@v4
+        with:
+          path: ~/.cargo/registry
+          key: ${{ runner.os }}-${{ matrix.rust }}-cargo-registry-${{ hashFiles('.cache_key') }}-${{ hashFiles('**/Cargo.lock') }}
+      
+      - name: Cache cargo index
+        uses: actions/cache@v4
+        with:
+          path: ~/.cargo/git
+          key: ${{ runner.os }}-${{ matrix.rust }}-cargo-index-${{ hashFiles('.cache_key') }}-${{ hashFiles('**/Cargo.lock') }}
+      
+      - name: Cache cargo build
+        uses: actions/cache@v4
+        with:
+          path: target
+          key: ${{ runner.os }}-${{ matrix.rust }}-cargo-build-${{ hashFiles('.cache_key') }}-${{ hashFiles('**/Cargo.lock') }}
+      
+      - name: Run Clippy
+        run: cargo clippy ${{ matrix.features }} --all-targets -- -D warnings
+
+  # Build and test 
+  test:
+    name: Test (${{ matrix.os }}, ${{ matrix.rust }}, ${{ matrix.features }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+        rust: [stable, beta, nightly]
+        features:
+          - --features default
+          - --no-default-features
+          - --all-features
+        exclude:
+          - os: windows-latest
+            rust: beta
+          - os: windows-latest
+            features: --no-default-features
+          - os: macos-latest
+            rust: beta
+          - os: macos-latest
+            features: --no-default-features
+          - os: windows-latest
+            rust: nightly
+            features: --no-default-features
+          - os: macos-latest
+            rust: nightly
+            features: --no-default-features
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Install Rust ${{ matrix.rust }}
+        uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: ${{ matrix.rust }}
+      
+      - name: Generate cache key
+        shell: bash
+        run: echo "${{ matrix.rust }} ${{ matrix.features }}" | tee .cache_key
+      
+      - name: Cache cargo registry
+        uses: actions/cache@v4
+        with:
+          path: ~/.cargo/registry
+          key: ${{ runner.os }}-${{ matrix.rust }}-cargo-registry-${{ hashFiles('.cache_key') }}-${{ hashFiles('**/Cargo.lock') }}
+      
+      - name: Cache cargo index
+        uses: actions/cache@v4
+        with:
+          path: ~/.cargo/git
+          key: ${{ runner.os }}-${{ matrix.rust }}-cargo-index-${{ hashFiles('.cache_key') }}-${{ hashFiles('**/Cargo.lock') }}
+      
+      - name: Cache cargo build
+        uses: actions/cache@v4
+        with:
+          path: target
+          key: ${{ runner.os }}-${{ matrix.rust }}-cargo-build-${{ hashFiles('.cache_key') }}-${{ hashFiles('**/Cargo.lock') }}
+      
+      - name: Build
+        run: cargo build ${{ matrix.features }} --verbose
+      
+      - name: Run unit tests
+        run: cargo test ${{ matrix.features }} --lib --verbose
+      
+      - name: Run doc tests
+        run: cargo test ${{ matrix.features }} --doc --verbose
+        continue-on-error: ${{ matrix.rust == 'nightly' }}
+
+
+  # Integration tests (requires Bitcoin node)
+  integration-test:
+    name: Integration Tests (${{ matrix.features }})
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    strategy:
+      matrix:
+        features:
+          - --features default
+          - --all-features
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+      
+      - name: Install Bitcoin Core 27.0
+        run: |
+          wget https://bitcoincore.org/bin/bitcoin-core-30.0/bitcoin-30.0-x86_64-linux-gnu.tar.gz
+          tar xzf bitcoin-30.0-x86_64-linux-gnu.tar.gz
+          sudo install -m 0755 -o root -g root -t /usr/local/bin bitcoin-30.0/bin/*
+      
+      - name: Start Bitcoin Core (regtest)
+        run: |
+          mkdir -p ~/.bitcoin
+          bitcoind -regtest -daemon -rpcuser=test -rpcpassword=test -rpcport=18443
+          sleep 5
+      
+      - name: Run integration tests
+        run: cargo test ${{ matrix.features }} --test integration -- --ignored --test-threads=1
+        env:
+          BITCOIN_RPC_URL: http://localhost:18443
+          BITCOIN_RPC_USER: bitcoin
+          BITCOIN_RPC_PASS: bitcoin
+      
+      - name: Stop Bitcoin Core
+        if: always()
+        run: bitcoin-cli -regtest -rpcuser=bitcoin -rpcpassword=bitcoin stop || true
+
+  # MSRV
+  msrv:
+    name: MSRV
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Install Rust 1.70.0
+        uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: 1.70.0
+          
+      - name: Check MSRV
+        run: cargo check --all-features

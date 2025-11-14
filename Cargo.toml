@@ -1,5 +1,5 @@
 [package]
-name = "bdk-rpc-client"
+name = "bdk_rpc_client"
 version = "0.1.0"
 edition = "2024"
 
@@ -7,3 +7,6 @@ edition = "2024"
 corepc-types = { version = "0.10.1", features = ["default"]}
 jsonrpc = { version = "0.18.0", features = ["simple_http", "simple_tcp", "minreq_http", "simple_uds", "proxy"] }
 
+[features]
+default = [ "v30" ]
+v30 = [ ]
