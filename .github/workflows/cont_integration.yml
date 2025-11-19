@@ -3,7 +3,6 @@ on: [push, pull_request]
 name: CI
 
 jobs:
-  # formatting
   fmt:
     name: Rust fmt
     runs-on: ubuntu-latest
@@ -11,10 +10,12 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
       
-      - name: Install Rust
-        uses: dtolnay/rust-toolchain@stable
+      - name: Install Rust toolchain
+        uses: actions-rust-lang/setup-rust-toolchain@v1
         with:
+          toolchain: stable
           components: rustfmt
+          cache: true
       
       - name: Check fmt
         run: cargo fmt --all -- --check
@@ -32,33 +33,13 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       
-      - name: Install Rust ${{ matrix.rust }}
-        uses: dtolnay/rust-toolchain@master
+      - name: Install Rust toolchain
+        uses: actions-rust-lang/setup-rust-toolchain@v1
         with:
-          toolchain: ${{ matrix.rust }}
+          toolchain: ${{matrix.rust}}
           components: clippy
-           
-      - name: Generate cache key
-        run: echo "${{ matrix.rust }} ${{ matrix.features }}" | tee .cache_key
-      
-      - name: Cache cargo registry
-        uses: actions/cache@v4
-        with:
-          path: ~/.cargo/registry
-          key: ${{ runner.os }}-${{ matrix.rust }}-cargo-registry-${{ hashFiles('.cache_key') }}-${{ hashFiles('**/Cargo.lock') }}
-      
-      - name: Cache cargo index
-        uses: actions/cache@v4
-        with:
-          path: ~/.cargo/git
-          key: ${{ runner.os }}-${{ matrix.rust }}-cargo-index-${{ hashFiles('.cache_key') }}-${{ hashFiles('**/Cargo.lock') }}
-      
-      - name: Cache cargo build
-        uses: actions/cache@v4
-        with:
-          path: target
-          key: ${{ runner.os }}-${{ matrix.rust }}-cargo-build-${{ hashFiles('.cache_key') }}-${{ hashFiles('**/Cargo.lock') }}
-      
+          cache: true
+
       - name: Run Clippy
         run: cargo clippy ${{ matrix.features }} --all-targets -- -D warnings
 
@@ -92,32 +73,11 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       
-      - name: Install Rust ${{ matrix.rust }}
-        uses: dtolnay/rust-toolchain@master
+      - name: Install Rust toolchain
+        uses: actions-rust-lang/setup-rust-toolchain@v1
         with:
           toolchain: ${{ matrix.rust }}
-      
-      - name: Generate cache key
-        shell: bash
-        run: echo "${{ matrix.rust }} ${{ matrix.features }}" | tee .cache_key
-      
-      - name: Cache cargo registry
-        uses: actions/cache@v4
-        with:
-          path: ~/.cargo/registry
-          key: ${{ runner.os }}-${{ matrix.rust }}-cargo-registry-${{ hashFiles('.cache_key') }}-${{ hashFiles('**/Cargo.lock') }}
-      
-      - name: Cache cargo index
-        uses: actions/cache@v4
-        with:
-          path: ~/.cargo/git
-          key: ${{ runner.os }}-${{ matrix.rust }}-cargo-index-${{ hashFiles('.cache_key') }}-${{ hashFiles('**/Cargo.lock') }}
-      
-      - name: Cache cargo build
-        uses: actions/cache@v4
-        with:
-          path: target
-          key: ${{ runner.os }}-${{ matrix.rust }}-cargo-build-${{ hashFiles('.cache_key') }}-${{ hashFiles('**/Cargo.lock') }}
+          cache: true
       
       - name: Build
         run: cargo build ${{ matrix.features }} --verbose
@@ -129,7 +89,6 @@ jobs:
         run: cargo test ${{ matrix.features }} --doc --verbose
         continue-on-error: ${{ matrix.rust == 'nightly' }}
 
-
   # Integration tests (requires Bitcoin node)
   integration-test:
     name: Integration Tests (${{ matrix.features }})
@@ -139,13 +98,17 @@ jobs:
       matrix:
         features:
           - --all-features
+          - --no-default-features
     steps:
       - uses: actions/checkout@v4
       
-      - name: Install Rust
-        uses: dtolnay/rust-toolchain@stable
+      - name: Install Rust toolchain
+        uses: actions-rust-lang/setup-rust-toolchain@v1
+        with:
+          toolchain: stable
+          cache: true
       
-      - name: Install Bitcoin Core 27.0
+      - name: Install Bitcoin Core 30.0
         run: |
           wget https://bitcoincore.org/bin/bitcoin-core-30.0/bitcoin-30.0-x86_64-linux-gnu.tar.gz
           tar xzf bitcoin-30.0-x86_64-linux-gnu.tar.gz
@@ -154,7 +117,7 @@ jobs:
       - name: Start Bitcoin Core (regtest)
         run: |
           mkdir -p ~/.bitcoin
-          bitcoind -regtest -daemon -rpcuser=test -rpcpassword=test -rpcport=18443
+          bitcoind -regtest -daemon -rpcuser=bitcoin -rpcpassword=bitcoin -rpcport=18443
           sleep 5
       
       - name: Run integration tests
@@ -175,10 +138,11 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       
-      - name: Install Rust 1.85.0
-        uses: dtolnay/rust-toolchain@master
+      - name: Install Rust toolchain
+        uses: actions-rust-lang/setup-rust-toolchain@v1
         with:
           toolchain: 1.85.0
+          cache: true
           
       - name: Check MSRV
         run: cargo check --all-features
