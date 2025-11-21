@@ -8,6 +8,7 @@ repository = "https://github.com/bitcoindevkit/bdk-rpc-client"
 documentation = "https://docs.rs/bdk_rpc_client"
 description = "A minimal production-ready bitcoind RPC client for Bitcoin Dev Kit."
 license = "MIT OR Apache-2.0"
+authors = ["Bitcoin Dev Kit Developers"]
 readme = "README.md"
 
 [dependencies]
