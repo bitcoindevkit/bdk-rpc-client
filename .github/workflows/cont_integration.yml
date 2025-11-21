@@ -1,0 +1,106 @@
+on: [push, pull_request]
+
+name: CI
+
+jobs:
+  fmt:
+    name: Rust fmt
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      
+      - name: Install Rust toolchain
+        uses: actions-rust-lang/setup-rust-toolchain@v1
+        with:
+          toolchain: stable
+          components: rustfmt
+          cache: true
+      
+      - name: Check fmt
+        run: cargo fmt --all -- --check
+
+  # Clippy lints
+  clippy:
+    name: Clippy (${{ matrix.rust }}, ${{ matrix.features }})
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        rust: [stable, beta]
+        features:
+          - --no-default-features
+          - --all-features
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Install Rust toolchain
+        uses: actions-rust-lang/setup-rust-toolchain@v1
+        with:
+          toolchain: ${{matrix.rust}}
+          components: clippy
+          cache: true
+
+      - name: Run Clippy
+        run: cargo clippy ${{ matrix.features }} --all-targets -- -D warnings
+
+  # Build and test 
+  test:
+    name: Test (${{ matrix.os }}, ${{ matrix.rust }}, ${{ matrix.features }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+        rust: [stable, beta, nightly]
+        features:
+          - --no-default-features
+          - --all-features
+        exclude:
+          - os: windows-latest
+            rust: beta
+          - os: windows-latest
+            features: --no-default-features
+          - os: macos-latest
+            rust: beta
+          - os: macos-latest
+            features: --no-default-features
+          - os: windows-latest
+            rust: nightly
+            features: --no-default-features
+          - os: macos-latest
+            rust: nightly
+            features: --no-default-features
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Install Rust toolchain
+        uses: actions-rust-lang/setup-rust-toolchain@v1
+        with:
+          toolchain: ${{ matrix.rust }}
+          cache: true
+      
+      - name: Build
+        run: cargo build ${{ matrix.features }} --verbose
+      
+      - name: Run unit tests
+        run: cargo test ${{ matrix.features }} --lib --verbose
+      
+      - name: Run doc tests
+        run: cargo test ${{ matrix.features }} --doc --verbose
+        continue-on-error: ${{ matrix.rust == 'nightly' }}
+
+  # MSRV
+  msrv:
+    name: MSRV
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Install Rust toolchain
+        uses: actions-rust-lang/setup-rust-toolchain@v1
+        with:
+          toolchain: 1.85.0
+          cache: true
+          
+      - name: Check MSRV
+        run: cargo check --all-features
